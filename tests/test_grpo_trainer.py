@@ -252,6 +252,35 @@ class TestGRPOTrainer(TrlTestCase):
         )
 
     @pytest.mark.parametrize(
+        "loss_type, epsilon_high_arg, expected",
+        [
+            ("cispo", None, 5.0),
+            ("cispo", 3.0, 3.0),
+            ("grpo", None, 0.2),
+            ("grpo", 0.28, 0.28),
+        ],
+    )
+    def test_cispo_epsilon_high_default(self, loss_type, epsilon_high_arg, expected):
+        dataset = load_dataset("trl-internal-testing/zen", "standard_prompt_only", split="train")
+        args = GRPOConfig(
+            output_dir=self.tmp_dir,
+            loss_type=loss_type,
+            epsilon_high=epsilon_high_arg,
+            per_device_train_batch_size=3,
+            num_generations=3,
+            max_completion_length=8,
+            max_steps=0,
+            report_to="none",
+        )
+        trainer = GRPOTrainer(
+            model="trl-internal-testing/tiny-Qwen2ForCausalLM-2.5",
+            reward_funcs="trl-internal-testing/tiny-Qwen2ForSequenceClassification-2.5",
+            args=args,
+            train_dataset=dataset,
+        )
+        assert trainer.epsilon_high == expected
+
+    @pytest.mark.parametrize(
         "model_id",
         [
             "trl-internal-testing/tiny-Cohere2ForCausalLM",

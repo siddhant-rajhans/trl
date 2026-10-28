@@ -990,7 +990,12 @@ class GRPOTrainer(_BaseTrainer):
         # Multi-step
         self.num_iterations = args.num_iterations  # = 𝜇 in the GRPO paper
         self.epsilon_low = args.epsilon
-        self.epsilon_high = args.epsilon_high if args.epsilon_high is not None else args.epsilon
+        if args.epsilon_high is not None:
+            self.epsilon_high = args.epsilon_high
+        elif self.loss_type == "cispo":
+            self.epsilon_high = 5.0
+        else:
+            self.epsilon_high = args.epsilon
         # Tracks the number of iterations (forward + backward passes), including those within a grad accum cycle
         self._step = 0
         # Buffer the batch to reuse generated outputs across multiple updates. For more details, see

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import types
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -22,7 +22,12 @@ from transformers import AutoModelForCausalLM
 from transformers.testing_utils import torch_device
 
 from trl.import_utils import is_deepspeed_available
-from trl.models.utils import disable_gradient_checkpointing, prepare_deepspeed, prepare_fsdp, unwrap_model_for_generation
+from trl.models.utils import (
+    disable_gradient_checkpointing,
+    prepare_deepspeed,
+    prepare_fsdp,
+    unwrap_model_for_generation,
+)
 
 
 @pytest.mark.skipif(not is_deepspeed_available(), reason="deepspeed is not installed")
@@ -127,7 +132,7 @@ class TestPrepareFsdp2Broadcast:
         model = torch.nn.Linear(4, 4)
         accelerator = _make_fsdp2_accelerator(cpu_ram_efficient=True)
 
-        result = prepare_fsdp(model, accelerator)
+        prepare_fsdp(model, accelerator)
 
         mock_shard.assert_called_once()
         mock_load.assert_called_once()
@@ -143,7 +148,7 @@ class TestPrepareFsdp2Broadcast:
         model = torch.nn.Linear(4, 4)
         accelerator = _make_fsdp2_accelerator(cpu_ram_efficient=False)
 
-        result = prepare_fsdp(model, accelerator)
+        prepare_fsdp(model, accelerator)
 
         mock_shard.assert_called_once()
         mock_load.assert_not_called()

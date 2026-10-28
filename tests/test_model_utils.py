@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import types
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
@@ -22,7 +22,7 @@ from transformers import AutoModelForCausalLM
 from transformers.testing_utils import torch_device
 
 from trl.import_utils import is_deepspeed_available
-from trl.models.utils import disable_gradient_checkpointing, prepare_deepspeed, unwrap_model_for_generation
+from trl.models.utils import disable_gradient_checkpointing, prepare_deepspeed, prepare_fsdp, unwrap_model_for_generation
 
 
 @pytest.mark.skipif(not is_deepspeed_available(), reason="deepspeed is not installed")
@@ -97,3 +97,67 @@ class TestUnwrapModelForGeneration:
                 torch.autograd.grad(loss, list(model.parameters()))
         else:
             torch.autograd.grad(loss, list(model.parameters()))
+
+
+def _make_fsdp2_accelerator(cpu_ram_efficient=False):
+    """Build a minimal mock accelerator for the FSDP2 branch of prepare_fsdp."""
+    fsdp_plugin = types.SimpleNamespace(
+        fsdp_version=2,
+        reshard_after_forward=True,
+        cpu_offload=None,
+        mixed_precision_policy=None,
+        ignored_modules=None,
+        cpu_ram_efficient_loading=cpu_ram_efficient,
+    )
+    parallelism_config = types.SimpleNamespace(fsdp_dim_names=("dp",))
+    return types.SimpleNamespace(
+        state=types.SimpleNamespace(fsdp_plugin=fsdp_plugin),
+        device=torch.device("cpu"),
+        torch_device_mesh=None,
+        parallelism_config=parallelism_config,
+    )
+
+
+class TestPrepareFsdp2Broadcast:
+    @patch("trl.models.utils.get_parameters_from_modules", return_value=set())
+    @patch("torch.distributed.fsdp.fully_shard")
+    @patch("accelerate.utils.fsdp_utils.fsdp2_load_full_state_dict")
+    def test_broadcast_called_when_cpu_ram_efficient(self, mock_load, mock_shard, mock_get_params):
+        """When cpu_ram_efficient_loading=True, fsdp2_load_full_state_dict must be called to broadcast weights."""
+        model = torch.nn.Linear(4, 4)
+        accelerator = _make_fsdp2_accelerator(cpu_ram_efficient=True)
+
+        result = prepare_fsdp(model, accelerator)
+
+        mock_shard.assert_called_once()
+        mock_load.assert_called_once()
+        args = mock_load.call_args
+        assert args[0][0] is accelerator
+        assert args[0][1] is model
+
+    @patch("trl.models.utils.get_parameters_from_modules", return_value=set())
+    @patch("torch.distributed.fsdp.fully_shard")
+    @patch("accelerate.utils.fsdp_utils.fsdp2_load_full_state_dict")
+    def test_no_broadcast_without_cpu_ram_efficient(self, mock_load, mock_shard, mock_get_params):
+        """When cpu_ram_efficient_loading=False, fsdp2_load_full_state_dict must NOT be called."""
+        model = torch.nn.Linear(4, 4)
+        accelerator = _make_fsdp2_accelerator(cpu_ram_efficient=False)
+
+        result = prepare_fsdp(model, accelerator)
+
+        mock_shard.assert_called_once()
+        mock_load.assert_not_called()
+
+    @patch("trl.models.utils.get_parameters_from_modules", return_value=set())
+    @patch("torch.distributed.fsdp.fully_shard")
+    @patch("accelerate.utils.fsdp_utils.fsdp2_load_full_state_dict")
+    def test_state_dict_captured_before_meta(self, mock_load, mock_shard, mock_get_params):
+        """The original state dict must be captured before moving to meta device."""
+        model = torch.nn.Linear(4, 4)
+        original_weight = model.weight.data.clone()
+        accelerator = _make_fsdp2_accelerator(cpu_ram_efficient=True)
+
+        prepare_fsdp(model, accelerator)
+
+        loaded_sd = mock_load.call_args[0][2]
+        assert torch.equal(loaded_sd["weight"], original_weight)

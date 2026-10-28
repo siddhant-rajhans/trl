@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import itertools
 import warnings
 from collections.abc import Callable
@@ -305,9 +304,8 @@ def prepare_fsdp(model, accelerator: Accelerator) -> FSDP | FSDPModule:
             }
             model = FSDP(model, **kwargs)
         elif fsdp_plugin.fsdp_version == 2:
-            from torch.distributed.fsdp import CPUOffloadPolicy, MixedPrecisionPolicy, fully_shard
-
             from accelerate.utils.fsdp_utils import fsdp2_load_full_state_dict, get_non_persistent_buffers
+            from torch.distributed.fsdp import CPUOffloadPolicy, MixedPrecisionPolicy, fully_shard
 
             mesh = getattr(accelerator, "torch_device_mesh", None)
             ignored_params = get_parameters_from_modules(fsdp_plugin.ignored_modules, model, accelerator.device)
@@ -326,7 +324,7 @@ def prepare_fsdp(model, accelerator: Accelerator) -> FSDP | FSDPModule:
             if cpu_ram_efficient:
                 original_sd = model.state_dict()
                 non_persistent_fqns = get_non_persistent_buffers(model, recurse=True, fqns=True)
-                original_non_persistent_buffers = copy.deepcopy(
+                original_non_persistent_buffers = deepcopy(
                     {k: v for k, v in model.named_buffers() if k in non_persistent_fqns}
                 )
                 model = model.to(torch.device("meta"))

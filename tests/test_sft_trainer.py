@@ -934,6 +934,36 @@ class TestSFTTrainer(TrlTestCase):
         accumulated_aux_update = router_update(2, 2, 1.0) - router_update(2, 2, 0.0)
         torch.testing.assert_close(accumulated_aux_update, aux_update, rtol=1e-3, atol=1e-6)
 
+    def test_aux_loss_num_local_experts_fallback(self):
+        from transformers import PhimoeConfig
+
+        dataset = load_dataset("trl-internal-testing/zen", "standard_language_modeling", split="train[:8]")
+        tokenizer = AutoTokenizer.from_pretrained("trl-internal-testing/tiny-Qwen2ForCausalLM-2.5")
+        model = AutoModelForCausalLM.from_config(
+            PhimoeConfig(
+                vocab_size=len(tokenizer),
+                hidden_size=16,
+                intermediate_size=32,
+                num_hidden_layers=2,
+                num_attention_heads=4,
+                num_key_value_heads=2,
+                num_local_experts=4,
+                num_experts_per_tok=2,
+            )
+        )
+        assert not hasattr(model.config, "num_experts")
+        training_args = SFTConfig(
+            output_dir=self.tmp_dir,
+            max_steps=1,
+            per_device_train_batch_size=2,
+            router_aux_loss_coef=0.001,
+            bf16=True,
+            report_to="none",
+        )
+        trainer = SFTTrainer(model=model, args=training_args, train_dataset=dataset, processing_class=tokenizer)
+        trainer.train()
+        assert trainer.state.log_history[-1]["train_loss"] is not None
+
     @require_peft
     def test_train_peft_model(self):
         model_id = "trl-internal-testing/tiny-Qwen2ForCausalLM-2.5"

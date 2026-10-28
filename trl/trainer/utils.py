@@ -1739,13 +1739,15 @@ def add_fused_lm_head(
                 ) < Version("5.6.0"):
                     num_experts = self.num_experts
                 else:
-                    num_experts = text_config.num_experts
-                num_experts_per_tok = text_config.num_experts_per_tok
-            # Padding-free packs all real tokens into a single row, so `attention_mask` is None and every token counts.
-            aux_loss = load_balancing_loss_func(
-                backbone_outputs.router_logits, num_experts, num_experts_per_tok, kwargs.get("attention_mask")
-            )
-            loss = loss + getattr(text_config, "router_aux_loss_coef", 0.0) * aux_loss
+                    num_experts = getattr(text_config, "num_experts", None)
+                    if num_experts is None:
+                        num_experts = getattr(text_config, "num_local_experts", 0)
+                num_experts_per_tok = getattr(text_config, "num_experts_per_tok", 0)
+            if num_experts >= 2:
+                aux_loss = load_balancing_loss_func(
+                    backbone_outputs.router_logits, num_experts, num_experts_per_tok, kwargs.get("attention_mask")
+                )
+                loss = loss + getattr(text_config, "router_aux_loss_coef", 0.0) * aux_loss
 
         return FusedCausalLMOutput(
             loss=loss,
